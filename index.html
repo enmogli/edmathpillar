@@ -43,6 +43,7 @@ input[type=range]{flex:1;accent-color:var(--p-clr);cursor:pointer}
 .dim-lbl{position:absolute;transform:translate(-50%,-50%);background:var(--panel-bg);border:1px solid var(--panel-bdr);color:var(--text-main);padding:2px 6px;border-radius:4px;font-size:11px;font-weight:600;pointer-events:auto;cursor:pointer;box-shadow:0 2px 4px rgba(0,0,0,0.1);transition:transform 0.1s, opacity 0.2s}
 .dim-lbl:hover{border-color:var(--p-clr);color:var(--p-clr);transform:translate(-50%,-50%) scale(1.05)}
 .dim-lbl.hidden{opacity:0;pointer-events:none}
+.cvhint{padding:7px 12px;font-size:11px;color:var(--text-sub);text-align:center;border-top:1px solid var(--panel-bdr);background:var(--bg-main);font-weight:500;letter-spacing:0.03em}
 .rcol{display:flex;flex-direction:column;gap:12px}
 .panel{background:var(--panel-bg);border:1px solid var(--panel-bdr);border-radius:13px;padding:14px}
 .ptitle{font-size:11px;font-weight:600;color:var(--text-sub);letter-spacing:.1em;text-transform:uppercase;margin-bottom:12px;display:flex;align-items:center;gap:5px}
@@ -125,6 +126,7 @@ input[type=range]{flex:1;accent-color:var(--p-clr);cursor:pointer}
         <div class="ie-btns"><button class="ie-ok" id="ie-ok">確認</button><button class="ie-cancel" id="ie-cancel">取消</button></div>
       </div>
     </div>
+    <div class="cvhint">💡 提示：左鍵拖曳旋轉 · 滾輪縮放 · 右鍵拖曳平移 · 雙擊空白處恢復視角</div>
     <div class="cvfoot">
       <button class="anim-btn" id="btn-anim">▶ 分解動畫</button>
       <div class="slider-wrap">
@@ -146,6 +148,7 @@ input[type=range]{flex:1;accent-color:var(--p-clr);cursor:pointer}
     <div class="panel" id="stats-panel">
       <div class="stats-tog" id="stats-tog">
         <div class="ptitle" style="margin:0">計算結果</div>
+        <span class="sarr" id="sarr">▼</span>
       </div>
       <div id="stats-body">
         <div class="sgrid" id="stats"></div>
@@ -196,7 +199,7 @@ let animProgress = 0, targetProgress = 0;
 let isAnimating = false;
 let labelsData = []; // 儲存標籤的 3D 錨點資訊
 let currentEditKey = null;
-let fopen = false, score = {r:0, t:0}, curQ = null;
+let fopen = false, statsOpen = true, score = {r:0, t:0}, curQ = null;
 
 // --- DOM 元素 ---
 const wrapper = document.getElementById('cv-wrapper');
@@ -398,13 +401,18 @@ function buildGeometry() {
       animationHinges.push({ obj: sideHinge, axis: 'y', endRot: 0, startRot: extAngles[i] });
     }
 
-    // 標籤定位點：高度
-    if(i === 0 && !isCircle) {
+    // 標籤定位點：高度 (全部形狀共用，圓柱展開後文字變成「長」)
+    if(i === 0) {
       const hMarker = new THREE.Object3D();
       hMarker.position.set(-w/2 - 10, 0, 0);
       sideMesh.add(hMarker);
-      labelsData.push({ obj: hMarker, text: `高 ${modelHeight}`, key: 'h' });
+      labelsData.push({ 
+        obj: hMarker, 
+        dynamicText: (prog) => (isCircle && prog > 0.5) ? `長 ${modelHeight}` : `高 ${modelHeight}`, 
+        key: 'h' 
+      });
     }
+
     // 標籤定位點：底邊長度
     if(!isCircle) {
       const wMarker = new THREE.Object3D();
@@ -412,7 +420,18 @@ function buildGeometry() {
       sideMesh.add(wMarker);
       const labelText = cid() === 'poly' ? `邊${i+1}: ${w.toFixed(1)}` : `邊長 ${w.toFixed(1)}`;
       const editKey = cid() === 'poly' ? `pe_${i}` : (i===0?'a':(i===1?'b':'c'));
-      labelsData.push({ obj: wMarker, text: labelText, key: editKey, isEdge: true, edgeIdx: i });
+      labelsData.push({ obj: wMarker, text: labelText, key: editKey });
+    } else if (isCircle && i === 32) {
+      // 圓柱的展開寬度（圓周長）標籤，設定在正中央段落
+      const cMarker = new THREE.Object3D();
+      cMarker.position.set(0, -modelHeight/2 - 10, 0);
+      sideMesh.add(cMarker);
+      const C = (2 * 3.14 * cp().r).toFixed(1);
+      labelsData.push({
+        obj: cMarker,
+        dynamicText: (prog) => (prog > 0.5) ? `寬(周長) ${C}` : null,
+        key: 'r'
+      });
     }
 
     // 將頂面與底面綁定到第 0 面
@@ -435,11 +454,44 @@ function buildGeometry() {
       botHinge.add(botMesh);
       animationHinges.push({ obj: botHinge, axis: 'x', endRot: 0, startRot: Math.PI/2 });
 
+      // 繪製圓柱的實體圓心、半徑線
       if (isCircle) {
+        const ca = Math.cos(-alpha), sa = Math.sin(-alpha);
+        const cxLocal = -midX * ca - (-midY) * sa;
+        const cyLocal = -midX * sa + (-midY) * ca;
+        
+        const dotMat = new THREE.MeshBasicMaterial({ color: isDk ? 0xffffff : 0x1a2636 });
+        const lineMat = new THREE.LineBasicMaterial({ color: isDk ? 0xffffff : 0x1a2636, linewidth: 2 });
+        const centerGeom = new THREE.CircleGeometry(2, 16);
+        
+        // 頂面：圓心與半徑線
+        const dotTop = new THREE.Mesh(centerGeom, dotMat);
+        dotTop.position.set(cxLocal, cyLocal, 0.2);
+        topMesh.add(dotTop);
+        
+        const radPts = [
+          new THREE.Vector3(cxLocal, cyLocal, 0.2),
+          new THREE.Vector3(topShapePts[32].x, topShapePts[32].y, 0.2) 
+        ];
+        const radLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints(radPts), lineMat);
+        topMesh.add(radLine);
+        
         const rMarker = new THREE.Object3D();
-        rMarker.position.set(0, 0, cp().r/2); // 圓心在局部空間 (0,0,0)，拉出一點距離
+        rMarker.position.set((cxLocal + topShapePts[32].x)/2, (cyLocal + topShapePts[32].y)/2, 0.2);
         topMesh.add(rMarker);
         labelsData.push({ obj: rMarker, text: `半徑 ${cp().r}`, key: 'r' });
+
+        // 底面：圓心與半徑線
+        const dotBot = new THREE.Mesh(centerGeom, dotMat);
+        dotBot.position.set(cxLocal, -cyLocal, 0.2);
+        botMesh.add(dotBot);
+        
+        const radPtsBot = [
+          new THREE.Vector3(cxLocal, -cyLocal, 0.2),
+          new THREE.Vector3(botShapePts[32].x, botShapePts[32].y, 0.2) 
+        ];
+        const radLineBot = new THREE.Line(new THREE.BufferGeometry().setFromPoints(radPtsBot), lineMat);
+        botMesh.add(radLineBot);
       }
     }
 
@@ -448,15 +500,10 @@ function buildGeometry() {
   }
 
   // 調整整個 Assembly 的初始對齊
-  // 折疊狀態 (progress=0)：需要立起來，底面貼齊 XZ 平面 (世界 Y=0)
-  // 由於底面在 local Y = -modelHeight/2，所以 Assembly 需上移 modelHeight/2
   assemblyGroup.position.y = modelHeight / 2;
-  
-  // 更新一次姿勢
   updateAnimation(animProgress);
 }
 
-// --- 動畫更新邏輯 ---
 function updateAnimation(prog) {
   // 處理所有的局部展開關節
   animationHinges.forEach(h => {
@@ -488,6 +535,10 @@ function renderLabels() {
   const heightHalf = wrapper.clientHeight / 2;
 
   labelsData.forEach(data => {
+    // 支援動態轉換文字 (例如：高 -> 長)
+    const text = data.dynamicText ? data.dynamicText(animProgress) : data.text;
+    if (!text) return; // 如果沒有文字則跳過不顯示該標籤
+
     const pos = new THREE.Vector3();
     data.obj.getWorldPosition(pos);
     pos.project(camera);
@@ -504,13 +555,18 @@ function renderLabels() {
     } else {
       div = document.createElement('div');
       div.className = 'dim-lbl';
-      labelsContainer.appendChild(div);
+      // 將資料綁定在 DOM 元素上，解決重複利用的事件捕捉問題
       div.onclick = (e) => {
-        if(animProgress > 0.1 && !data.isEdge) return; // 展開時只允許改邊長
-        showInlineEditor(e.clientX, e.clientY, data);
-      }
+        if (e.target._editData) {
+          showInlineEditor(e.clientX, e.clientY, e.target._editData);
+        }
+      };
+      labelsContainer.appendChild(div);
     }
-    div.textContent = data.text;
+    
+    // 更新最新綁定資料
+    div._editData = data;
+    div.textContent = text;
     div.style.left = `${x}px`;
     div.style.top = `${y}px`;
     divIdx++;
@@ -518,7 +574,7 @@ function renderLabels() {
 
   // 清除多餘的節點
   while (existingDivs.length > divIdx) {
-    labelsContainer.removeChild(existingDivs[divIdx]);
+    labelsContainer.removeChild(existingDivs[existingDivs.length - 1]);
   }
 }
 
@@ -562,6 +618,28 @@ sliderAnim.oninput = (e) => {
 document.getElementById('tog-hide').onchange = function() {
   allHidden = this.checked;
 };
+
+document.getElementById('stats-tog').onclick = function() {
+  statsOpen = !statsOpen;
+  const body = document.getElementById('stats-body');
+  const arr = document.getElementById('sarr');
+  if (statsOpen) {
+    body.style.display = 'block';
+    arr.style.transform = 'rotate(0deg)';
+  } else {
+    body.style.display = 'none';
+    arr.style.transform = 'rotate(-90deg)';
+  }
+};
+
+wrapper.addEventListener('dblclick', function(e) {
+  // 確保點擊的是畫布或空白區域，避免誤觸 UI 標籤
+  if (e.target.tagName.toLowerCase() === 'canvas' || e.target.id === 'labels-container') {
+    camera.position.set(150, 200, 250);
+    controls.target.set(0, 0, 0);
+    controls.update();
+  }
+});
 
 function renderParams() {
   const s = SHAPES[curIdx];
@@ -713,7 +791,17 @@ function showInlineEditor(clientX, clientY, data) {
   ieEl.style.left = (clientX - rect.left) + 'px';
   ieEl.style.top = (clientY - rect.top) + 'px';
   ieEl.style.display = 'flex';
-  ieInp.value = '';
+  
+  // 載入目前的值供修改
+  let curVal = '';
+  if (data.key.startsWith('pe_')) {
+    const idx = parseInt(data.key.split('_')[1]);
+    curVal = getPolyEdges()[idx];
+  } else {
+    curVal = cp()[data.key];
+  }
+  ieInp.value = curVal;
+  
   setTimeout(() => ieInp.focus(), 50);
 }
 function hideIE() { ieEl.style.display = 'none'; currentEditKey = null; }
