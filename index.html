@@ -418,7 +418,7 @@ function buildGeometry() {
       const wMarker = new THREE.Object3D();
       wMarker.position.set(0, -modelHeight/2 - 10, 0);
       sideMesh.add(wMarker);
-      const labelText = cid() === 'poly' ? `邊${i+1}: ${w.toFixed(1)}` : `邊長 ${w.toFixed(1)}`;
+      const labelText = cid() === 'poly' ? `邊${i+1}: ${parseFloat(w.toFixed(1))}` : `邊長 ${parseFloat(w.toFixed(1))}`;
       const editKey = cid() === 'poly' ? `pe_${i}` : (i===0?'a':(i===1?'b':'c'));
       labelsData.push({ obj: wMarker, text: labelText, key: editKey });
     } else if (isCircle && i === 32) {
@@ -426,7 +426,7 @@ function buildGeometry() {
       const cMarker = new THREE.Object3D();
       cMarker.position.set(0, -modelHeight/2 - 10, 0);
       sideMesh.add(cMarker);
-      const C = (2 * 3.14 * cp().r).toFixed(1);
+      const C = parseFloat((2 * 3.14 * cp().r).toFixed(1));
       labelsData.push({
         obj: cMarker,
         dynamicText: (prog) => (prog > 0.5) ? `寬(周長) ${C}` : null,
@@ -672,10 +672,10 @@ function updateStats() {
   const V = A * (cp().h || 80);
   const SA = 2 * A + P * (cp().h || 80);
   document.getElementById('stats').innerHTML = `
-    <div class="sc"><div class="scl">底面積</div><div class="scv">${A.toFixed(1)}<span class="scu"></span></div></div>
-    <div class="sc"><div class="scl">體積</div><div class="scv">${V.toFixed(1)}<span class="scu"></span></div></div>
-    <div class="sc"><div class="scl">底面周長</div><div class="scv">${P.toFixed(1)}</div></div>
-    <div class="sc"><div class="scl">表面積</div><div class="scv">${SA.toFixed(1)}<span class="scu"></span></div></div>
+    <div class="sc"><div class="scl">底面積</div><div class="scv">${parseFloat(A.toFixed(2))}<span class="scu"></span></div></div>
+    <div class="sc"><div class="scl">體積</div><div class="scv">${parseFloat(V.toFixed(2))}<span class="scu"></span></div></div>
+    <div class="sc"><div class="scl">底面周長</div><div class="scv">${parseFloat(P.toFixed(2))}</div></div>
+    <div class="sc"><div class="scl">表面積</div><div class="scv">${parseFloat(SA.toFixed(2))}<span class="scu"></span></div></div>
   `;
 }
 
