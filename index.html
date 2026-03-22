@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>面面俱到 — 3D 柱體分解學習工具</title>
+<!-- 引入 Three.js 與 OrbitControls -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<style>
+:root {
+  --p-clr: #1a6fb5; --p-bg: #dbeeff; --p-bdr: #7ab8e8;
+  --bg-main: #f4f7fb; --text-main: #1a2636; --text-sub: #7a8fa3;
+  --panel-bg: #fff; --panel-bdr: #d0dce8;
+}
+@media(prefers-color-scheme:dark){
+  :root {
+    --p-clr: #60b0f0; --p-bg: #0d2a4a; --p-bdr: #2a5a8a;
+    --bg-main: #0d1b2a; --text-main: #d0e4f4; --text-sub: #5a7a9a;
+    --panel-bg: #0a1628; --panel-bdr: #1e3a5a;
+  }
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,-apple-system,sans-serif;background:var(--bg-main);color:var(--text-main);-webkit-text-size-adjust:100%;padding:16px}
+.app{max-width:960px;margin:0 auto;padding:0 0 20px}
+.hdr{display:flex;align-items:baseline;gap:10px;padding-bottom:12px;margin-bottom:14px;border-bottom:1px solid var(--panel-bdr)}
+.hdr-name{font-size:19px;font-weight:600;letter-spacing:.04em}
+.hdr-sub{font-size:11px;color:var(--text-sub);letter-spacing:.07em}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:11px}
+.stab{padding:6px 13px;border:1px solid var(--panel-bdr);border-radius:20px;font-size:12px;font-weight:500;cursor:pointer;background:var(--panel-bg);color:var(--text-sub);transition:all .15s}
+.stab.on{background:var(--p-bg);color:var(--p-clr);border-color:var(--p-bdr)}
+.layout{display:grid;grid-template-columns:1fr 240px;gap:16px;align-items:start}
+.cv-container{position:relative;background:var(--panel-bg);border-radius:14px;border:1px solid var(--panel-bdr);overflow:hidden;display:flex;flex-direction:column}
+#cv-wrapper{width:100%;height:450px;position:relative}
+canvas{display:block;width:100%;height:100%;outline:none}
+.cvfoot{padding:8px 12px;background:var(--panel-bg);border-top:1px solid var(--panel-bdr);display:flex;align-items:center;gap:12px}
+.anim-btn{flex-shrink:0;padding:8px 16px;border:1px solid var(--p-bdr);border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;background:var(--p-bg);color:var(--p-clr);transition:all .15s;display:flex;align-items:center;gap:6px}
+.anim-btn:hover{filter:brightness(0.95)}
+.slider-wrap{flex:1;display:flex;align-items:center;gap:8px}
+.slider-lbl{font-size:12px;font-weight:600;color:var(--text-sub)}
+input[type=range]{flex:1;accent-color:var(--p-clr);cursor:pointer}
+#labels-container{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.dim-lbl{position:absolute;transform:translate(-50%,-50%);background:var(--panel-bg);border:1px solid var(--panel-bdr);color:var(--text-main);padding:2px 6px;border-radius:4px;font-size:11px;font-weight:600;pointer-events:auto;cursor:pointer;box-shadow:0 2px 4px rgba(0,0,0,0.1);transition:transform 0.1s, opacity 0.2s}
+.dim-lbl:hover{border-color:var(--p-clr);color:var(--p-clr);transform:translate(-50%,-50%) scale(1.05)}
+.dim-lbl.hidden{opacity:0;pointer-events:none}
+.rcol{display:flex;flex-direction:column;gap:12px}
+.panel{background:var(--panel-bg);border:1px solid var(--panel-bdr);border-radius:13px;padding:14px}
+.ptitle{font-size:11px;font-weight:600;color:var(--text-sub);letter-spacing:.1em;text-transform:uppercase;margin-bottom:12px;display:flex;align-items:center;gap:5px}
+.ptitle::before{content:'';display:block;width:3px;height:12px;background:var(--p-bdr);border-radius:2px}
+.prow{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.prow:last-child{margin-bottom:0}
+.plbl{font-size:12px;font-weight:500;width:60px;flex-shrink:0}
+.pinp{flex:1;border:1px solid var(--panel-bdr);border-radius:7px;padding:6px 8px;font-size:13px;font-weight:500;min-width:0;background:var(--bg-main);color:var(--text-main)}
+.pinp:focus{outline:none;border-color:var(--p-bdr)}
+.toggle-row{display:flex;align-items:center;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid var(--panel-bdr)}
+.toggle-lbl{font-size:12px;flex:1}
+.toggle-track{position:relative;width:34px;height:20px;flex-shrink:0;cursor:pointer}
+.toggle-track input{opacity:0;width:0;height:0;position:absolute}
+.toggle-bg{position:absolute;inset:0;background:var(--panel-bdr);border-radius:10px;transition:background .2s}
+.toggle-thumb{position:absolute;top:3px;left:3px;width:14px;height:14px;background:#fff;border-radius:50%;transition:transform .2s;pointer-events:none}
+.toggle-track input:checked~.toggle-bg{background:var(--p-clr)}
+.toggle-track input:checked~.toggle-thumb{transform:translateX(14px)}
+.stats-tog{cursor:pointer;display:flex;align-items:center;gap:6px;user-select:none}
+.stats-tog .sarr{font-size:10px;transition:transform .15s;color:var(--text-sub)}
+.sgrid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:10px}
+.sc{background:var(--bg-main);border-radius:9px;padding:8px 10px}
+.scl{font-size:10px;color:var(--text-sub);margin-bottom:3px}
+.scv{font-size:15px;font-weight:600;color:var(--text-main)}
+.scu{font-size:10px;color:var(--text-sub);font-weight:400}
+.inline-editor{position:absolute;background:var(--panel-bg);border:2px solid var(--p-bdr);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:8px;z-index:20;min-width:160px;box-shadow:0 4px 16px rgba(0,0,0,.15);transform:translate(-50%, -100%);margin-top:-10px}
+.ie-title{font-size:11px;font-weight:600;color:var(--text-sub)}
+.inline-editor input{border:1px solid var(--panel-bdr);border-radius:6px;padding:6px;font-size:13px;font-weight:500;width:100%;background:var(--bg-main);color:var(--text-main)}
+.ie-btns{display:flex;gap:6px}
+.ie-ok{flex:1;padding:6px 0;border:1px solid var(--p-bdr);border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;background:var(--p-bg);color:var(--p-clr)}
+.ie-cancel{flex:1;padding:6px 0;border:1px solid var(--panel-bdr);border-radius:6px;font-size:12px;cursor:pointer;background:var(--bg-main);color:var(--text-main)}
+
+/* 恢復公式說明與題庫的樣式 */
+.ftog{cursor:pointer;font-size:12px;color:var(--p-clr);padding:3px 0;display:flex;align-items:center;gap:5px;user-select:none;font-weight:600}
+.farr{font-size:10px;transition:transform .15s;display:inline-block}
+.fbox{border-radius:9px;padding:9px 11px;font-size:12px;line-height:2;color:var(--text-main);margin-top:7px;background:var(--bg-main);border:1px solid var(--panel-bdr)}
+.pi-note{background:var(--panel-bg);border:1px solid var(--p-bdr);border-radius:8px;padding:8px 11px;margin-bottom:8px;font-size:11px;line-height:1.8;color:var(--text-main)}
+.pi-val{display:inline-block;background:var(--p-bg);color:var(--p-clr);border-radius:5px;padding:1px 7px;font-size:12px;font-weight:600;font-family:monospace}
+.frow{display:flex;align-items:flex-start;gap:4px;padding:1px 0}
+.frowx{cursor:pointer;border-radius:5px;padding:2px 4px;margin:-2px -4px;transition:background .14s}
+.frowx:hover{background:var(--p-bg)}
+.frowx .xa{font-size:10px;color:var(--p-clr);margin-top:3px;flex-shrink:0;transition:transform .15s;display:inline-block}
+.frowx.open .xa{transform:rotate(90deg)}
+.fdet{margin:3px 0 5px 16px;padding:6px 9px;background:var(--panel-bg);border-radius:6px;border-left:2px solid var(--p-bdr);font-size:11px;line-height:1.9;color:var(--text-sub)}
+.fkey{display:inline-block;background:var(--p-bg);color:var(--p-clr);border-radius:4px;padding:0 5px;font-size:11px;font-weight:600;font-family:monospace}
+.qpanel{background:var(--panel-bg);border:1px solid var(--panel-bdr);border-radius:13px;padding:14px;margin-top:16px}
+.qhdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.qttl{font-size:11px;font-weight:600;color:var(--text-sub);letter-spacing:.1em;text-transform:uppercase;display:flex;align-items:center;gap:5px}
+.qttl::before{content:'';display:block;width:3px;height:12px;background:#1D9E75;border-radius:2px}
+.spill{background:var(--bg-main);border-radius:20px;padding:4px 12px;font-size:11px;color:var(--text-sub)}
+.spill b{color:var(--text-main);font-weight:600}
+.gbtn{display:inline-flex;align-items:center;padding:8px 16px;border:1px solid var(--p-bdr);border-radius:20px;font-size:13px;font-weight:600;cursor:pointer;background:var(--p-bg);color:var(--p-clr);transition:all .15s}
+.gbtn:hover{filter:brightness(0.95)}
+.qbubble{background:var(--bg-main);border-radius:11px;padding:12px 14px;margin-top:10px}
+.qtxt{font-size:14px;color:var(--text-main);line-height:1.65;margin-bottom:6px;font-weight:600}
+.qhnt{font-size:12px;color:var(--text-sub);margin-bottom:10px;padding-left:10px;border-left:2px solid var(--panel-bdr)}
+.qrow{display:flex;gap:8px}
+.qinp{flex:1;border:1px solid var(--panel-bdr);border-radius:8px;padding:8px 10px;font-size:14px;background:var(--panel-bg);color:var(--text-main)}
+.qinp:focus{outline:none;border-color:var(--p-bdr)}
+.qsub{padding:8px 16px;border:1px solid var(--p-bdr);border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;background:var(--p-bg);color:var(--p-clr);white-space:nowrap}
+.qsub:hover{filter:brightness(0.95)}
+.rok{font-size:13px;color:#1D9E75;margin-top:8px;font-weight:600}
+.rerr{font-size:13px;color:#d94040;margin-top:8px;font-weight:600}
+.rhint{font-size:12px;color:var(--text-sub);margin-top:3px}
+
+@media(max-width:768px){.layout{grid-template-columns:1fr}.rcol{flex-direction:row;flex-wrap:wrap}.panel{flex:1;min-width:200px}#cv-wrapper{height:350px}}
+</style>
+</head>
+<body>
+<div class="app">
+<div class="hdr"><span class="hdr-name">面面俱到</span><span class="hdr-sub">3D 柱體分解學習工具</span></div>
+<div style="font-size:10px;font-weight:600;letter-spacing:.1em;color:var(--text-sub);text-transform:uppercase;margin-bottom:7px">選擇形狀</div>
+<div class="tabs" id="tabs"></div>
+<div class="layout">
+  <div class="cv-container">
+    <div id="cv-wrapper">
+      <div id="labels-container"></div>
+      <div class="inline-editor" id="ie" style="display:none">
+        <div class="ie-title" id="ie-title">修改數值</div>
+        <input type="number" id="ie-inp" min="5" max="300">
+        <div class="ie-btns"><button class="ie-ok" id="ie-ok">確認</button><button class="ie-cancel" id="ie-cancel">取消</button></div>
+      </div>
+    </div>
+    <div class="cvfoot">
+      <button class="anim-btn" id="btn-anim">▶ 分解動畫</button>
+      <div class="slider-wrap">
+        <span class="slider-lbl">立體</span>
+        <input type="range" id="slider-anim" min="0" max="1" step="0.001" value="0">
+        <span class="slider-lbl">平面</span>
+      </div>
+    </div>
+  </div>
+  <div class="rcol">
+    <div class="panel">
+      <div class="ptitle">尺寸設定</div>
+      <div id="params"></div>
+      <div class="toggle-row">
+        <span class="toggle-lbl">隱藏所有標注</span>
+        <label class="toggle-track"><input type="checkbox" id="tog-hide"><span class="toggle-bg"></span><span class="toggle-thumb"></span></label>
+      </div>
+    </div>
+    <div class="panel" id="stats-panel">
+      <div class="stats-tog" id="stats-tog">
+        <div class="ptitle" style="margin:0">計算結果</div>
+      </div>
+      <div id="stats-body">
+        <div class="sgrid" id="stats"></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="ftog" id="ftog"><span class="farr" id="farr">▶</span>公式說明</div>
+      <div id="fbox" style="display:none" class="fbox"></div>
+    </div>
+  </div>
+</div>
+<div class="qpanel">
+  <div class="qhdr"><div class="qttl">挑戰看看</div><div class="spill">答對 <b id="sr">0</b> 題 / 共 <b id="st">0</b> 題</div></div>
+  <button class="gbtn" id="gbtn">出一道題目</button>
+  <div id="qarea"></div>
+</div>
+</div>
+
+<script>
+// --- 資料定義與狀態 ---
+const SHAPES = [
+  {id:'circle',  label:'圓柱',      def:{r:40,h:80},     params:[{k:'r',label:'半徑',min:10,max:100},{k:'h',label:'高度',min:10,max:180}]},
+  {id:'square',  label:'正方柱',    def:{a:60,h:80},     params:[{k:'a',label:'邊長',min:10,max:120},{k:'h',label:'高度',min:10,max:180}]},
+  {id:'rect',    label:'平行四邊形柱',def:{a:70,b:50,theta:60,h:80},params:[{k:'a',label:'底邊',min:10,max:130},{k:'b',label:'側邊',min:10,max:110},{k:'theta',label:'傾斜角',min:20,max:89},{k:'h',label:'高度',min:10,max:180}]},
+  {id:'triangle',label:'三角柱',    def:{a:70,b:60,c:55,h:80}, params:[{k:'a',label:'底邊甲',min:20,max:130},{k:'b',label:'邊乙',min:20,max:110},{k:'c',label:'邊丙',min:20,max:110},{k:'h',label:'高度',min:10,max:180}]},
+  {id:'poly',    label:'多邊形柱',  def:{n:6,side:40,h:80},  params:[{k:'n',label:'邊數',min:3,max:12},{k:'side',label:'統一邊長',min:10,max:100},{k:'h',label:'高度',min:10,max:180}]}
+];
+
+const PI_NOTE = '<div class="pi-note">圓周率用 <span class="pi-val">3.14</span>，是一個固定的數字，表示圓的周長除以直徑的結果。所有計算都用 <span class="pi-val">3.14</span> 代入。</div>';
+const FORMS = {
+  circle:{hasPi:true,rows:[{t:'底面積 = 3.14 x 半徑 x 半徑'},{t:'底面周長 = 2 x 3.14 x 半徑'},{t:'體積 = 底面積 x 高'},{t:'表面積 = 兩個底面加上側面',x:true,d:'<div>兩底面：<span class="fkey">2 x 3.14 x 半徑 x 半徑</span></div><div>側面展開長方形：<span class="fkey">底面周長 x 高</span></div><div>合計：<span class="fkey">2 x 3.14 x 半徑 x (半徑 + 高)</span></div>'}]},
+  square:{hasPi:false,rows:[{t:'底面積 = 邊長 x 邊長'},{t:'底面周長 = 邊長 x 4'},{t:'體積 = 底面積 x 高'},{t:'表面積 = 兩個底面加上四個側面',x:true,d:'<div>兩底面：<span class="fkey">2 x 邊長 x 邊長</span></div><div>四側面：<span class="fkey">4 x 邊長 x 高</span></div>'}]},
+  rect:{hasPi:false,rows:[{t:'底面積 = 底邊 x 側邊 x 傾斜角正弦值'},{t:'底面周長 = (底邊 + 側邊) x 2'},{t:'體積 = 底面積 x 高'},{t:'表面積 = 兩個底面加上側面',x:true,d:'<div>兩底面：<span class="fkey">2 x 底面積</span></div><div>側面：<span class="fkey">底面周長 x 高</span></div>'}]},
+  triangle:{hasPi:false,rows:[{t:'先算半周長（三邊加起來除以 2）'},{t:'底面積用海龍公式計算'},{t:'底面周長 = 三條邊加起來'},{t:'體積 = 底面積 x 高'},{t:'表面積 = 兩個底面加上三個側面',x:true,d:'<div>兩底面：<span class="fkey">2 x 底面積</span></div><div>三側面：<span class="fkey">(甲 + 乙 + 丙) x 高</span></div>'}]},
+  poly:{hasPi:false,rows:[{t:'各邊長可在展開圖中點擊標籤修改'},{t:'底面積由各三角形面積加總'},{t:'底面周長 = 所有邊長加總'},{t:'體積 = 底面積 x 高'},{t:'表面積 = 兩個底面加上各側面',x:true,d:'<div>兩底面：<span class="fkey">2 x 底面積</span></div><div>各側面：<span class="fkey">各邊長 x 高 的總和</span></div>'}]}
+};
+
+const qTs = [
+  (A,V,SA,P) => ({q:`用目前的尺寸，${SHAPES[curIdx].label}的底面積是多少？（小數點到第二位）`,hint:'圓周率用 3.14 計算',ans:Math.round(A*100)/100,tol:0.02}),
+  (A,V,SA,P) => ({q:`用目前的尺寸，${SHAPES[curIdx].label}的體積是多少？（小數點到第二位）`,hint:'體積 = 底面積 乘以 高',ans:Math.round(V*100)/100,tol:0.05}),
+  (A,V,SA,P) => ({q:`用目前的尺寸，${SHAPES[curIdx].label}的表面積是多少？（小數點到第二位）`,hint:'表面積 = 兩個底面 加上 周長乘高',ans:Math.round(SA*100)/100,tol:0.05}),
+  (A,V,SA,P) => ({q:`用目前的尺寸，${SHAPES[curIdx].label}的底面周長是多少？（小數點到第二位）`,hint:'底面所有邊長加起來',ans:Math.round(P*100)/100,tol:0.02})
+];
+
+let curIdx = 0, pv = {}, polyEdges = {};
+let allHidden = false;
+let animProgress = 0, targetProgress = 0;
+let isAnimating = false;
+let labelsData = []; // 儲存標籤的 3D 錨點資訊
+let currentEditKey = null;
+let fopen = false, score = {r:0, t:0}, curQ = null;
+
+// --- DOM 元素 ---
+const wrapper = document.getElementById('cv-wrapper');
+const labelsContainer = document.getElementById('labels-container');
+const btnAnim = document.getElementById('btn-anim');
+const sliderAnim = document.getElementById('slider-anim');
+const ieEl = document.getElementById('ie');
+const ieInp = document.getElementById('ie-inp');
+
+// --- 數學輔助函數 (產生2D底面) ---
+function cid() { return SHAPES[curIdx].id; }
+function cp() { return pv[cid()] || {}; }
+function setp(k, v) { if (!pv[cid()]) pv[cid()] = {}; pv[cid()][k] = v; }
+function initP() {
+  const s = SHAPES[curIdx];
+  if (!pv[s.id]) {
+    pv[s.id] = {};
+    s.params.forEach(p => pv[s.id][p.k] = s.def[p.k]);
+  }
+}
+function getPolyEdges() {
+  const n = Math.max(3, Math.round(cp().n || 6));
+  const defSide = cp().side || 40;
+  if (!polyEdges[n]) {
+    polyEdges[n] = Array(n).fill(defSide);
+  }
+  while (polyEdges[n].length < n) polyEdges[n].push(defSide);
+  return polyEdges[n].slice(0, n);
+}
+function getPoly2d() {
+  const s = cid(), p = cp();
+  let pts = [];
+  if (s === 'circle') {
+    const r = p.r || 40, n = 64; // 圓柱用 64 邊形模擬完美捲動
+    for(let i=0; i<n; i++) {
+      pts.push([r * Math.cos(i * 2 * Math.PI / n), r * Math.sin(i * 2 * Math.PI / n)]);
+    }
+  } else if (s === 'square') {
+    const a = p.a || 60;
+    pts = [[-a/2, -a/2], [a/2, -a/2], [a/2, a/2], [-a/2, a/2]];
+  } else if (s === 'rect') {
+    const a = p.a || 70, b = p.b || 50, t = (p.theta || 60) * Math.PI / 180;
+    const bx = b * Math.cos(t), by = b * Math.sin(t);
+    pts = [[0, 0], [a, 0], [a + bx, by], [bx, by]];
+    const cx = pts.reduce((sum, v) => sum + v[0], 0) / 4;
+    const cy = pts.reduce((sum, v) => sum + v[1], 0) / 4;
+    pts = pts.map(v => [v[0] - cx, v[1] - cy]);
+  } else if (s === 'triangle') {
+    const a = p.a || 70, b = p.b || 60, c = p.c || 55;
+    const ss = (a + b + c) / 2;
+    const ok = ss > a && ss > b && ss > c;
+    const A = ok ? a : 70, B = ok ? b : 60, C = ok ? c : 55;
+    const cA = (A*A + B*B - C*C) / (2 * A * B);
+    const ang = Math.acos(Math.max(-1, Math.min(1, cA)));
+    pts = [[-A/2, 0], [A/2, 0], [-A/2 + B * Math.cos(ang), B * Math.sin(ang)]];
+    const cy = pts.reduce((sum, v) => sum + v[1], 0) / 3;
+    pts = pts.map(v => [v[0], v[1] - cy]);
+  } else if (s === 'poly') {
+    const edges = getPolyEdges(), n = edges.length;
+    let ang = 0, step = 2 * Math.PI / n;
+    pts.push([0, 0]);
+    for(let i=0; i<n-1; i++) {
+      pts.push([pts[i][0] + edges[i] * Math.cos(ang), pts[i][1] + edges[i] * Math.sin(ang)]);
+      ang += step;
+    }
+    const cx = pts.reduce((sum, v) => sum + v[0], 0) / n;
+    const cy = pts.reduce((sum, v) => sum + v[1], 0) / n;
+    pts = pts.map(v => [v[0] - cx, v[1] - cy]);
+  }
+  return pts;
+}
+function calcArea() {
+  const pts = getPoly2d();
+  let a = 0;
+  for(let i=0; i<pts.length; i++) {
+    const ni = (i+1)%pts.length;
+    a += pts[i][0]*pts[ni][1] - pts[ni][0]*pts[i][1];
+  }
+  return cid() === 'circle' ? 3.14 * Math.pow(cp().r, 2) : Math.abs(a)/2;
+}
+function calcPerim() {
+  const pts = getPoly2d();
+  let p = 0;
+  for(let i=0; i<pts.length; i++) {
+    const ni = (i+1)%pts.length;
+    const dx = pts[ni][0]-pts[i][0], dy = pts[ni][1]-pts[i][1];
+    p += Math.sqrt(dx*dx + dy*dy);
+  }
+  return cid() === 'circle' ? 2 * 3.14 * cp().r : p;
+}
+
+// --- Three.js 初始化 ---
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(45, wrapper.clientWidth / wrapper.clientHeight, 1, 2000);
+camera.position.set(150, 200, 250);
+
+const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+renderer.setSize(wrapper.clientWidth, wrapper.clientHeight);
+renderer.setPixelRatio(window.devicePixelRatio);
+wrapper.insertBefore(renderer.domElement, labelsContainer);
+
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.05;
+controls.target.set(0, 0, 0);
+
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+scene.add(ambientLight);
+const dirLight = new THREE.DirectionalLight(0xffffff, 0.5);
+dirLight.position.set(100, 200, 100);
+scene.add(dirLight);
+
+// 全域材質
+const isDk = window.matchMedia('(prefers-color-scheme:dark)').matches;
+const matTop = new THREE.MeshLambertMaterial({ color: isDk ? 0x1D9E75 : 0x27C998, transparent: true, opacity: 0.85, side: THREE.DoubleSide });
+const matBot = new THREE.MeshLambertMaterial({ color: isDk ? 0x2a5a8a : 0x7ab8e8, transparent: true, opacity: 0.85, side: THREE.DoubleSide });
+const matSide = new THREE.MeshLambertMaterial({ color: isDk ? 0x1a6fb5 : 0x4aa3f0, transparent: true, opacity: 0.65, side: THREE.DoubleSide });
+const matEdge = new THREE.LineBasicMaterial({ color: isDk ? 0x60b0f0 : 0x0a4078, linewidth: 2 });
+
+let assemblyGroup = new THREE.Group();
+scene.add(assemblyGroup);
+let animationHinges = []; // 儲存需要旋轉的關節
+let modelHeight = 80;
+
+// --- 建立 3D 模型與展開骨架 ---
+function buildGeometry() {
+  // 清除舊模型
+  scene.remove(assemblyGroup);
+  assemblyGroup = new THREE.Group();
+  scene.add(assemblyGroup);
+  animationHinges = [];
+  labelsData = [];
+
+  const pts = getPoly2d();
+  const n = pts.length;
+  modelHeight = cp().h || 80;
+  const isCircle = cid() === 'circle';
+
+  // 1. 計算各邊長度與外角
+  const edgesInfo = [];
+  for(let i=0; i<n; i++) {
+    const p1 = pts[i], p2 = pts[(i+1)%n];
+    const dx = p2[0]-p1[0], dy = p2[1]-p1[1];
+    edgesInfo.push({ len: Math.sqrt(dx*dx + dy*dy), ang: Math.atan2(dy, dx), p1, p2 });
+  }
+  
+  const extAngles = [];
+  for(let i=0; i<n; i++) {
+    let prevAng = edgesInfo[(i-1+n)%n].ang;
+    let curAng = edgesInfo[i].ang;
+    let diff = curAng - prevAng;
+    if(diff < -Math.PI) diff += 2*Math.PI;
+    if(diff > Math.PI) diff -= 2*Math.PI;
+    extAngles.push(diff);
+  }
+
+  // 2. 建立標準化底面形狀 (將第0邊對齊 X 軸)
+  const E0 = edgesInfo[0];
+  const midX = (E0.p1[0] + E0.p2[0]) / 2, midY = (E0.p1[1] + E0.p2[1]) / 2;
+  const alpha = E0.ang;
+  
+  const topShapePts = [], botShapePts = [];
+  pts.forEach(p => {
+    // 平移並旋轉
+    const tx = p[0] - midX, ty = p[1] - midY;
+    const ca = Math.cos(-alpha), sa = Math.sin(-alpha);
+    const nx = tx*ca - ty*sa, ny = tx*sa + ty*ca;
+    topShapePts.push(new THREE.Vector2(nx, ny));
+    botShapePts.push(new THREE.Vector2(nx, -ny)); // 底面 Y 軸反轉以覆蓋底部
+  });
+
+  const topGeom = new THREE.ShapeGeometry(new THREE.Shape(topShapePts));
+  const botGeom = new THREE.ShapeGeometry(new THREE.Shape(botShapePts));
+  const topEdgesGeom = new THREE.BufferGeometry().setFromPoints([...topShapePts, topShapePts[0]]);
+
+  // 3. 建立連鎖展開結構 (Strip Unroll)
+  let parentHinge = assemblyGroup;
+  
+  for(let i=0; i<n; i++) {
+    const w = edgesInfo[i].len;
+    
+    // 建立當前邊的群組
+    const sideHinge = new THREE.Group();
+    // 除了第0面在原點，其餘面都連接在前一面的右邊緣
+    if(i > 0) sideHinge.position.set(edgesInfo[i-1].len / 2, 0, 0);
+    parentHinge.add(sideHinge);
+    
+    // 將側邊 Mesh 偏移，使其左邊緣對齊 Hinge
+    const sideMesh = new THREE.Mesh(new THREE.PlaneGeometry(w, modelHeight), matSide);
+    sideMesh.position.set(w / 2, 0, 0); 
+    sideHinge.add(sideMesh);
+
+    // 加上邊線
+    const edgeLines = new THREE.LineSegments(new THREE.EdgesGeometry(sideMesh.geometry), matEdge);
+    sideMesh.add(edgeLines);
+
+    // 記錄需要動畫的關節
+    if(i > 0) {
+      animationHinges.push({ obj: sideHinge, axis: 'y', endRot: 0, startRot: extAngles[i] });
+    }
+
+    // 標籤定位點：高度
+    if(i === 0 && !isCircle) {
+      const hMarker = new THREE.Object3D();
+      hMarker.position.set(-w/2 - 10, 0, 0);
+      sideMesh.add(hMarker);
+      labelsData.push({ obj: hMarker, text: `高 ${modelHeight}`, key: 'h' });
+    }
+    // 標籤定位點：底邊長度
+    if(!isCircle) {
+      const wMarker = new THREE.Object3D();
+      wMarker.position.set(0, -modelHeight/2 - 10, 0);
+      sideMesh.add(wMarker);
+      const labelText = cid() === 'poly' ? `邊${i+1}: ${w.toFixed(1)}` : `邊長 ${w.toFixed(1)}`;
+      const editKey = cid() === 'poly' ? `pe_${i}` : (i===0?'a':(i===1?'b':'c'));
+      labelsData.push({ obj: wMarker, text: labelText, key: editKey, isEdge: true, edgeIdx: i });
+    }
+
+    // 將頂面與底面綁定到第 0 面
+    if(i === 0) {
+      const topHinge = new THREE.Group();
+      topHinge.position.set(0, modelHeight/2, 0);
+      sideMesh.add(topHinge);
+      const topMesh = new THREE.Mesh(topGeom, matTop);
+      const topEdgeLine = new THREE.LineLoop(topEdgesGeom, matEdge);
+      topMesh.add(topEdgeLine);
+      topHinge.add(topMesh);
+      animationHinges.push({ obj: topHinge, axis: 'x', endRot: 0, startRot: -Math.PI/2 });
+
+      const botHinge = new THREE.Group();
+      botHinge.position.set(0, -modelHeight/2, 0);
+      sideMesh.add(botHinge);
+      const botMesh = new THREE.Mesh(botGeom, matBot);
+      const botEdgeLine = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints([...botShapePts, botShapePts[0]]), matEdge);
+      botMesh.add(botEdgeLine);
+      botHinge.add(botMesh);
+      animationHinges.push({ obj: botHinge, axis: 'x', endRot: 0, startRot: Math.PI/2 });
+
+      if (isCircle) {
+        const rMarker = new THREE.Object3D();
+        rMarker.position.set(0, 0, cp().r/2); // 圓心在局部空間 (0,0,0)，拉出一點距離
+        topMesh.add(rMarker);
+        labelsData.push({ obj: rMarker, text: `半徑 ${cp().r}`, key: 'r' });
+      }
+    }
+
+    // 下一個面將掛載在這個 sideMesh 上
+    parentHinge = sideMesh;
+  }
+
+  // 調整整個 Assembly 的初始對齊
+  // 折疊狀態 (progress=0)：需要立起來，底面貼齊 XZ 平面 (世界 Y=0)
+  // 由於底面在 local Y = -modelHeight/2，所以 Assembly 需上移 modelHeight/2
+  assemblyGroup.position.y = modelHeight / 2;
+  
+  // 更新一次姿勢
+  updateAnimation(animProgress);
+}
+
+// --- 動畫更新邏輯 ---
+function updateAnimation(prog) {
+  // 處理所有的局部展開關節
+  animationHinges.forEach(h => {
+    const currentRot = h.startRot + (h.endRot - h.startRot) * prog;
+    h.obj.rotation[h.axis] = currentRot;
+  });
+
+  // 處理整體 Assembly 的翻轉，讓展開圖可以平躺在地上
+  // 摺疊時 (prog=0): rot.x = 0
+  // 平攤時 (prog=1): rot.x = -PI/2
+  assemblyGroup.rotation.x = -Math.PI / 2 * prog;
+  
+  // 保持物體在地面上：
+  // 摺疊時中心高 H/2。平攤時中心高 0 (因為已經躺下)。
+  assemblyGroup.position.y = (modelHeight / 2) * (1 - Math.sin(prog * Math.PI / 2));
+}
+
+function renderLabels() {
+  if (allHidden) {
+    labelsContainer.innerHTML = '';
+    return;
+  }
+  
+  // 重複利用 DOM 節點
+  const existingDivs = labelsContainer.children;
+  let divIdx = 0;
+
+  const widthHalf = wrapper.clientWidth / 2;
+  const heightHalf = wrapper.clientHeight / 2;
+
+  labelsData.forEach(data => {
+    const pos = new THREE.Vector3();
+    data.obj.getWorldPosition(pos);
+    pos.project(camera);
+    
+    // 如果在相機背後則隱藏
+    if(pos.z > 1) return;
+
+    const x = (pos.x * widthHalf) + widthHalf;
+    const y = -(pos.y * heightHalf) + heightHalf;
+
+    let div;
+    if (divIdx < existingDivs.length) {
+      div = existingDivs[divIdx];
+    } else {
+      div = document.createElement('div');
+      div.className = 'dim-lbl';
+      labelsContainer.appendChild(div);
+      div.onclick = (e) => {
+        if(animProgress > 0.1 && !data.isEdge) return; // 展開時只允許改邊長
+        showInlineEditor(e.clientX, e.clientY, data);
+      }
+    }
+    div.textContent = data.text;
+    div.style.left = `${x}px`;
+    div.style.top = `${y}px`;
+    divIdx++;
+  });
+
+  // 清除多餘的節點
+  while (existingDivs.length > divIdx) {
+    labelsContainer.removeChild(existingDivs[divIdx]);
+  }
+}
+
+function animateLoop() {
+  requestAnimationFrame(animateLoop);
+  
+  // 平滑過渡動畫
+  if (Math.abs(animProgress - targetProgress) > 0.001) {
+    animProgress += (targetProgress - animProgress) * 0.1;
+    sliderAnim.value = animProgress;
+    updateAnimation(animProgress);
+    isAnimating = true;
+  } else {
+    animProgress = targetProgress;
+    isAnimating = false;
+  }
+  
+  controls.update();
+  renderer.render(scene, camera);
+  renderLabels();
+}
+
+// --- UI 與互動 ---
+function setTarget(prog) {
+  targetProgress = prog;
+  btnAnim.textContent = targetProgress === 1 ? '↺ 組合立體' : '▶ 分解動畫';
+  btnAnim.style.background = targetProgress === 1 ? 'var(--bg-main)' : 'var(--p-bg)';
+}
+
+btnAnim.onclick = () => {
+  setTarget(targetProgress === 1 ? 0 : 1);
+};
+
+sliderAnim.oninput = (e) => {
+  animProgress = parseFloat(e.target.value);
+  setTarget(animProgress > 0.5 ? 1 : 0); // 更新按鈕狀態
+  targetProgress = animProgress; // 立即跳轉
+  updateAnimation(animProgress);
+};
+
+document.getElementById('tog-hide').onchange = function() {
+  allHidden = this.checked;
+};
+
+function renderParams() {
+  const s = SHAPES[curIdx];
+  initP();
+  const el = document.getElementById('params');
+  el.innerHTML = '';
+  s.params.forEach(pp => {
+    const row = document.createElement('div');
+    row.className = 'prow';
+    const lb = document.createElement('span'); lb.className = 'plbl'; lb.textContent = pp.label;
+    const inp = document.createElement('input'); inp.className = 'pinp'; inp.type = 'number';
+    inp.min = pp.min; inp.max = pp.max; inp.value = cp()[pp.k] || s.def[pp.k];
+    inp.oninput = () => {
+      let v = parseFloat(inp.value);
+      if(!isNaN(v)) {
+        v = Math.max(pp.min, Math.min(pp.max, v));
+        setp(pp.k, v);
+        if(s.id === 'poly') polyEdges = {}; // 重置多邊形自訂邊
+        buildGeometry();
+        updateStats();
+      }
+    };
+    row.append(lb, inp); el.append(row);
+  });
+}
+
+function updateStats() {
+  const A = calcArea();
+  const P = calcPerim();
+  const V = A * (cp().h || 80);
+  const SA = 2 * A + P * (cp().h || 80);
+  document.getElementById('stats').innerHTML = `
+    <div class="sc"><div class="scl">底面積</div><div class="scv">${A.toFixed(1)}<span class="scu"></span></div></div>
+    <div class="sc"><div class="scl">體積</div><div class="scv">${V.toFixed(1)}<span class="scu"></span></div></div>
+    <div class="sc"><div class="scl">底面周長</div><div class="scv">${P.toFixed(1)}</div></div>
+    <div class="sc"><div class="scl">表面積</div><div class="scv">${SA.toFixed(1)}<span class="scu"></span></div></div>
+  `;
+}
+
+// 渲染公式說明
+function renderFormula() {
+  const fb = document.getElementById('fbox');
+  fb.innerHTML = '';
+  const form = FORMS[cid()];
+  if(form.hasPi) fb.innerHTML = PI_NOTE;
+  form.rows.forEach(item => {
+    const w = document.createElement('div');
+    if(item.x) {
+      w.className = 'frow frowx';
+      w.innerHTML = '<span class="xa">&#9658;</span><span>'+item.t+'</span>';
+      const d = document.createElement('div');
+      d.className = 'fdet';
+      d.style.display = 'none';
+      d.innerHTML = item.d;
+      w.addEventListener('click', () => {
+        const o = w.classList.toggle('open');
+        d.style.display = o ? 'block' : 'none';
+      });
+      fb.appendChild(w); fb.appendChild(d);
+    } else {
+      w.className = 'frow';
+      w.innerHTML = '<span style="color:var(--text-sub);margin-right:2px">•</span><span>'+item.t+'</span>';
+      fb.appendChild(w);
+    }
+  });
+}
+
+document.getElementById('ftog').onclick = function() {
+  fopen = !fopen;
+  document.getElementById('fbox').style.display = fopen ? 'block' : 'none';
+  document.getElementById('farr').style.transform = fopen ? 'rotate(90deg)' : 'rotate(0deg)';
+  if(fopen) renderFormula();
+};
+
+// 題庫與挑戰系統
+function clearQuiz() { 
+  document.getElementById('qarea').innerHTML = ''; 
+  curQ = null; 
+}
+
+document.getElementById('gbtn').onclick = () => {
+  const A = calcArea(), P = calcPerim();
+  const V = A * (cp().h || 80);
+  const SA = 2 * A + P * (cp().h || 80);
+  const tpl = qTs[Math.floor(Math.random() * qTs.length)];
+  curQ = tpl(A, V, SA, P);
+  score.t++;
+  document.getElementById('st').textContent = score.t;
+  document.getElementById('qarea').innerHTML = `
+    <div class="qbubble">
+      <div class="qtxt">${curQ.q}</div>
+      <div class="qhnt">${curQ.hint}</div>
+      <div class="qrow">
+        <input type="number" class="qinp" id="qinp" placeholder="輸入你的答案…" step="0.01">
+        <button class="qsub" id="qsub">確認</button>
+      </div>
+      <div id="qres"></div>
+    </div>`;
+  document.getElementById('qsub').onclick = checkA;
+  document.getElementById('qinp').onkeydown = e => { if(e.key === 'Enter') checkA(); };
+};
+
+function checkA() {
+  const inp = document.getElementById('qinp');
+  if(!inp) return;
+  const v = parseFloat(inp.value);
+  if(isNaN(v)) {
+    document.getElementById('qres').innerHTML = '<div class="rerr">請輸入一個數字</div>';
+    return;
+  }
+  const ok = Math.abs(v - curQ.ans) <= curQ.tol;
+  if(ok) {
+    score.r++;
+    document.getElementById('sr').textContent = score.r;
+    document.getElementById('qres').innerHTML = `<div class="rok">答對了！正確答案是 ${curQ.ans}</div>`;
+  } else {
+    document.getElementById('qres').innerHTML = `<div class="rerr">答錯了</div><div class="rhint">正確答案是 ${curQ.ans}，你填的是 ${v}</div>`;
+  }
+  document.getElementById('qsub').disabled = true;
+  inp.disabled = true;
+}
+
+// 建立分頁按鈕
+const tabsEl = document.getElementById('tabs');
+SHAPES.forEach((sh, i) => {
+  const b = document.createElement('button');
+  b.className = 'stab' + (i === 0 ? ' on' : '');
+  b.textContent = sh.label;
+  b.onclick = () => {
+    curIdx = i;
+    initP();
+    document.querySelectorAll('.stab').forEach((tt, j) => tt.classList.toggle('on', j === i));
+    setTarget(0);
+    renderParams();
+    buildGeometry();
+    updateStats();
+    clearQuiz();
+    if(fopen) renderFormula();
+    camera.position.set(150, 200, 250); // 重設視角
+    controls.target.set(0, 0, 0);
+  };
+  tabsEl.append(b);
+});
+
+// 行內編輯器
+function showInlineEditor(clientX, clientY, data) {
+  currentEditKey = data;
+  const rect = wrapper.getBoundingClientRect();
+  ieEl.style.left = (clientX - rect.left) + 'px';
+  ieEl.style.top = (clientY - rect.top) + 'px';
+  ieEl.style.display = 'flex';
+  ieInp.value = '';
+  setTimeout(() => ieInp.focus(), 50);
+}
+function hideIE() { ieEl.style.display = 'none'; currentEditKey = null; }
+document.getElementById('ie-cancel').onclick = hideIE;
+document.getElementById('ie-ok').onclick = () => {
+  const v = parseFloat(ieInp.value);
+  if(!isNaN(v) && currentEditKey) {
+    if (currentEditKey.key.startsWith('pe_')) {
+      // 處理多邊形個別邊長修改
+      const idx = parseInt(currentEditKey.key.split('_')[1]);
+      getPolyEdges()[idx] = Math.max(5, v);
+    } else {
+      setp(currentEditKey.key, v);
+      renderParams(); // 更新左側面板數值
+    }
+    buildGeometry();
+    updateStats();
+  }
+  hideIE();
+};
+ieInp.onkeydown = (e) => { if(e.key === 'Enter') document.getElementById('ie-ok').click(); if(e.key === 'Escape') hideIE(); };
+
+// RWD 與視窗調整
+window.addEventListener('resize', () => {
+  camera.aspect = wrapper.clientWidth / wrapper.clientHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(wrapper.clientWidth, wrapper.clientHeight);
+});
+
+// 初始化
+initP();
+renderParams();
+buildGeometry();
+updateStats();
+
+// 確保載入後啟動動畫迴圈
+window.onload = animateLoop;
+
+</script>
+</body>
+</html>
